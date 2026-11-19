@@ -53,6 +53,12 @@ def decode(payload, signal):
                         for dst, src in [('status', 'http.response.status_code'), ('path', 'url.path')]:
                             if src in attrs:
                                 attrs[dst] = attrs[src]
+                        if 'status' not in attrs and 'http.status_code' in attrs:
+                            attrs['status'] = attrs['http.status_code']
+                        if 'path' not in attrs:
+                            legacy_path = attrs.get('http.target', attrs.get('http.route'))
+                            if legacy_path:
+                                attrs['path'] = legacy_path
                     elif signal == 'logs':
                         base['kind'] = 'auth' if attrs.get('event.kind') == 'auth' else 'log'
                         attrs['body'] = value(point.get('body', {}))

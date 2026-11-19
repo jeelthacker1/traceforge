@@ -9,7 +9,7 @@ from app.db import Detection, Event, Evidence, Incident, IncidentEvent, Rule
 from app.integrity import verify
 from app.otlp import decode
 from app.pipeline import persist
-from app.rules import detect, enrich_incidents
+from app.rules import detect, enrich_incidents, escalate_due
 from app.scenarios import CATALOG, scenario
 from app.schema import Telemetry
 
@@ -179,3 +179,18 @@ def test_late_related_event_is_added(db):
     extra = Telemetry(timestamp=START + timedelta(seconds=10), service='gateway', kind='log', origin='synthetic', trace_id=rows[0].trace_id).normalized()
     process(db, [extra])
     assert db.get(IncidentEvent, (incident.id, extra['id']))
+
+
+def test_automatic_escalation_preserves_acknowledged_alerts(db):
+    process(db, scenario('A', 'escalation', START))
+    alerts = list(db.scalars(select(Detection).order_by(Detection.id)))
+    alerts[0].state = {**alerts[0].state, 'acknowledged': True}
+    escalate_due(db, START + timedelta(hours=1))
+    assert not alerts[0].state.get('escalated')
+    assert alerts[1].state['escalated'] is True
+
+
+def test_invalid_http_attribute_types_are_rejected():
+    for attrs in ({'status': '500'}, {'path': []}, {'latency_ms': -1}, {'authorized': 'false'}):
+        with pytest.raises(ValidationError):
+            Telemetry(timestamp=START, service='gateway', kind='request', attributes=attrs)

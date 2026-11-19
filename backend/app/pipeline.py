@@ -10,7 +10,7 @@ from sqlalchemy import select, text
 
 from .db import Evidence, Event, Metric, Service, SessionLocal, Span, Trace
 from .integrity import GENESIS, digest
-from .rules import detect, enrich_incidents
+from .rules import detect, enrich_incidents, escalate_due
 from .schema import Telemetry
 
 STREAM = 'traceforge:ingest'
@@ -105,6 +105,7 @@ def run(mode):
                     for event in pending:
                         detect(db, event)
                         enrich_incidents(db, event)
+                    escalate_due(db)
                 if pending:
                     client.publish('traceforge:updates', json.dumps({'type': 'events', 'count': len(pending)}))
                 else:

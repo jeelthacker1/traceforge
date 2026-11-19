@@ -1,21 +1,18 @@
-# Implementation plan
+# Implementation status
 
-Status: implementation underway. A phase is verified only when its checks have run.
+Core workflow verified in GitHub Actions run 44553119229. Follow-up hardening and pipeline measurements are in progress.
 
-1. Repository, database, authentication, Docker — implemented; runtime tests pending
-2. Instrumented demonstration services — implemented; real-stack verification pending
-3. OpenTelemetry ingestion and Redis processing — implemented; real-stack verification pending
-4. Live dashboard and dependency graph — production build and TypeScript checks passed
-5. Explainable detection rules — implemented; backend tests pending dependency installation
-6. Incident correlation — implemented; backend tests pending
-7. Security Time Machine — implemented; browser integration pending
-8. Evidence integrity — implemented; backend tests pending
-9. Statistical analysis and reporting — implemented; tests pending
-10. Tests, security review, CI, documentation — in progress
+| Phase | Implementation and verification |
+| --- | --- |
+| 1. Database, authentication, Docker | API tests and Compose deployment passed |
+| 2. Demonstration services | Real local traffic from five instrumented services verified |
+| 3. OTLP ingestion and Redis | Actual telemetry reached persisted storage and dashboard |
+| 4. Dashboard and graph | Production build and strict TypeScript passed; browser assertions strengthened |
+| 5. Explainable detections | Deterministic scenarios A–E and negative tests passed |
+| 6. Incident correlation | Identifier/window/origin tests and browser investigation passed |
+| 7. Time machine | Timeline replay verified in Playwright |
+| 8. Evidence integrity | Tampering, missing records, verification, and export tests passed |
+| 9. Statistics and reports | Held-out statistics and JSON/PDF API tests passed |
+| 10. CI, security, documentation | Initial 29 tests and full-stack browser test passed; final changes pending rerun |
 
-Verification will include deterministic unit/integration tests, a frontend production build,
-and Docker end-to-end checks when the local Docker daemon is available.
-
-Recorded limits: this Windows host lacks an available Linux Docker/WSL backend;
-the Compose integration suite will be run through GitHub Actions. Automated destructive
-retention, distributed scale benchmarks, and optional Isolation Forest are not claimed complete.
+Recorded limits: the authoring host lacks a Linux Docker/WSL backend, so full-stack validation runs in Linux CI. Automatic destructive retention and optional Isolation Forest are not claimed complete. Retention policy inspection is available, with safe explicit archival guidance. Screenshots and benchmark numbers are actual CI artifacts.

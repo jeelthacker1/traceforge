@@ -5,6 +5,8 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
+from uuid import uuid4
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -24,6 +26,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 SERVICE = os.getenv('SERVICE_NAME', 'gateway')
+request_identifier = ContextVar('request_identifier', default='')
 resource = Resource.create({'service.name': SERVICE, 'traceforge.origin': 'local'})
 tracer = TracerProvider(resource=resource)
 tracer.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
@@ -55,11 +58,16 @@ app = FastAPI(lifespan=lifespan)
 @app.middleware('http')
 async def monitor(request, call_next):
     start = time.perf_counter()
+    request_id = request.headers.get('x-request-id', str(uuid4()))[:128]
+    token = request_identifier.set(request_id)
+    trace.get_current_span().set_attribute('request_id', request_id)
     response = await call_next(request)
     ms = (time.perf_counter() - start) * 1000
     latency.record(ms, {'route': request.url.path})
     counter.add(1, {'status': response.status_code})
-    print(json.dumps({'service': SERVICE, 'path': request.url.path, 'status': response.status_code, 'duration_ms': ms}), flush=True)
+    response.headers['x-request-id'] = request_id
+    print(json.dumps({'service': SERVICE, 'request_id': request_id, 'path': request.url.path, 'status': response.status_code, 'duration_ms': ms}), flush=True)
+    request_identifier.reset(token)
     return response
 
 
@@ -72,7 +80,7 @@ async def call(service, path):
     # Fixed internal destinations only; no arbitrary URLs accepted from users.
     port = os.getenv('DEMO_' + service.upper() + '_URL', f'http://demo-{service}:8000')
     async with httpx.AsyncClient(timeout=5) as client:
-        response = await client.get(port + path)
+        response = await client.get(port + path, headers={'x-request-id': request_identifier.get()})
         response.raise_for_status()
         return response.json()
 
@@ -91,7 +99,7 @@ async def login(fail: bool = False, account: str = 'demo-user'):
     if SERVICE != 'auth':
         raise HTTPException(404)
     # No passwords are collected. The failure switch is a safe local simulation.
-    audit_logger.info('Authentication audit', extra={'event.kind': 'auth', 'account': 'demo-user', 'source': 'local-workload', 'outcome': 'failure' if fail else 'success'})
+    audit_logger.info('Authentication audit', extra={'event.kind': 'auth', 'account': 'demo-user', 'source': 'local-workload', 'request_id': request_identifier.get(), 'outcome': 'failure' if fail else 'success'})
     return {'success': not fail, 'fictional': True}
 
 

@@ -115,9 +115,15 @@ python benchmark.py
 
 The benchmark measures local SQLite persistence, hash verification, server graph construction, scenario processing, and incident queries. It is not a claim about distributed ingestion capacity or browser rendering performance. GitHub Actions uploads measured results as an artifact.
 
+Measured on a 4-logical-CPU Linux CI runner with Python 3.12.16 and SQLite: 10,000 events persisted in **12.90s** (**775 events/s**), chain verification **1.61s**, server graph query **0.240s**, 12-event detection scenario **0.238s**, incident query **0.00057s**. These are one-run measurements, not capacity guarantees; the CPU model was not reported. See [the recorded artifact](docs/benchmark-results.json) for provenance and precision.
+
 ## Screenshots
 
-Screenshots are added only when captured from a running application. See the verification record for whether browser capture was available; no mock image is presented as a live dashboard.
+Captured from the running Docker deployment in GitHub Actions, using actual local telemetry and clearly labeled synthetic incident evidence:
+
+![TraceForge security overview](docs/screenshots/overview.png)
+
+![Security Time Machine incident reconstruction](docs/screenshots/time-machine.png)
 
 ## Security boundaries and limitations
 

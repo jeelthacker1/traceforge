@@ -39,6 +39,9 @@ jobs:
       - run: docker compose up --build -d --wait
       - run: docker compose run --rm workload python workload.py --count 30
       - run: cd web && npm ci && npx playwright install --with-deps chromium && npm run test:e2e
+      - run: python scripts/benchmark_pipeline.py
+      - uses: actions/upload-artifact@v4
+        with: {name: pipeline-benchmark, path: pipeline-benchmark-results.json}
       - if: always()
         run: docker compose logs > compose.log
       - if: always()

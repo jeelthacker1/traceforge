@@ -13,6 +13,8 @@ Rules are seeded into `detection_rules` and edited through an ADMIN-only endpoin
 
 Default values are configurable. Each result includes observed value, threshold, window, evidence IDs, origin, processing timestamp, and a limitations statement. Disabled rules and suppressed services do not generate results. Sliding-window fingerprint deduplication avoids a new alert just because the clock crosses a fixed bucket boundary.
 
+Unacknowledged, unresolved alerts automatically escalate to high severity after the rule's configured response interval (default 900 seconds). Escalation persists and is audited; acknowledged or resolved alerts are excluded. `CORRELATION_KEYS` configures identifier priority (default `trace,request,account`) and `CORRELATION_WINDOW_SECONDS` controls the association window.
+
 Synthetic and non-synthetic origins are evaluated independently. Rate indicators never label traffic as malicious by themselves. Scenario E spreads normal requests across clients and must not generate detections under default thresholds.
 
 Error-spike baseline data ends before the current window. Latency statistical analysis separately holds out the newest sample, computes the preceding 60-observation rolling mean/std and EWMA, and requires at least 20 training samples with nonzero sample standard deviation for a Z-score. Its threshold is absolute Z > 3. These diagnostic scores are not probability estimates.

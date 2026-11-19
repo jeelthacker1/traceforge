@@ -1,0 +1,19 @@
+{
+  "source_run": "https://github.com/jeelthacker1/traceforge/actions/runs/44553119229",
+  "source_commit": "4473263d667bf55a6977b326d60ed41a8a0c2de6",
+  "environment": {
+    "os": "Linux-7.0.0-1020-azure-x86_64-with-glibc2.43",
+    "python": "3.12.16",
+    "cpu": "not reported by platform.processor()",
+    "logical_cpus": 4,
+    "database": "SQLite local file"
+  },
+  "events": 10000,
+  "persistence_seconds": 12.902025216000013,
+  "events_per_second": 775.0721171741965,
+  "verification_seconds": 1.6083465279999984,
+  "server_graph_query_seconds": 0.24043008200000315,
+  "scenario_processing_seconds": 0.23777355699999703,
+  "incident_query_seconds": 0.0005715020000138793,
+  "limitations": "Single-process SQLite persistence microbenchmark. Does not measure OTLP network/Redis throughput or browser graph rendering."
+}

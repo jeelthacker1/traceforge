@@ -1,6 +1,12 @@
 # Verification record
 
-Verification is in progress. Do not interpret implementation presence or a CI workflow file as a passing result.
+Initial full-stack verification passed in [GitHub Actions run 44553119229](https://github.com/jeelthacker1/traceforge/actions/runs/44553119229), commit `4473263d667bf55a6977b326d60ed41a8a0c2de6`.
+
+- Backend: **29 tests passed**, Ruff passed; one upstream Starlette TestClient deprecation warning.
+- Frontend: production build and strict TypeScript checks passed locally and in Linux CI.
+- Integration: all Compose services started, actual local service traffic was generated, and **1 Playwright end-to-end test passed**.
+- The 10,000-event SQLite benchmark completed; output is committed in `docs/benchmark-results.json`.
+- Real CI screenshots were downloaded and inspected. Follow-up changes add graph assertions, automatic escalation tests, and an HTTP/Redis/PostgreSQL pipeline benchmark; verification will be recorded after execution.
 
 ## Automated checks
 
@@ -26,7 +32,7 @@ npm run test:e2e
 
 ## Host limitations
 
-The authoring host does not currently have an available Linux Docker engine / WSL backend. Full-stack startup and browser end-to-end verification must therefore be confirmed in CI or on a Docker-capable machine. Browser automation also stopped because it could not verify the active browser URL. No fabricated screenshots or benchmark measurements are included.
+The authoring host lacks a Linux Docker/WSL backend. Full-stack startup and browser verification were performed successfully in Linux CI. Local browser automation stopped because it could not verify the active browser URL; screenshots come from the actual Playwright CI run. No fabricated screenshots or benchmark measurements are included.
 
 ## Benchmark method
 

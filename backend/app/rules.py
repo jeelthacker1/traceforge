@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from sqlalchemy import select
 
-from .db import Detection, Event, Incident, IncidentEvent, Rule, now
+from .db import Detection, Event, Incident, IncidentEvent, Rule, audit, now
 
 BASELINE = [['gateway', 'auth'], ['gateway', 'orders'], ['orders', 'inventory'], ['orders', 'payments']]
 DEFAULTS = {
@@ -20,7 +20,20 @@ DEFAULTS = {
 def seed_rules(db):
     for key, config in DEFAULTS.items():
         if not db.get(Rule, key):
-            db.add(Rule(id=key, config={'enabled': True, 'window_seconds': 60, 'suppressed_services': [], 'allowed_edges': BASELINE, **config}))
+            db.add(Rule(id=key, config={'enabled': True, 'window_seconds': 60, 'escalation_after_seconds': 900, 'suppressed_services': [], 'allowed_edges': BASELINE, **config}))
+
+
+def escalate_due(db, at=None):
+    at = at or now()
+    for detection in db.scalars(select(Detection).where(Detection.timestamp < at - timedelta(seconds=60))):
+        if detection.state.get('acknowledged') or detection.state.get('resolution') or detection.state.get('escalated'):
+            continue
+        rule = db.get(Rule, detection.rule_id)
+        age = (at.replace(tzinfo=None) - detection.timestamp.replace(tzinfo=None)).total_seconds()
+        if age >= rule.config.get('escalation_after_seconds', 900):
+            detection.state = {**detection.state, 'escalated': True, 'escalation_reason': 'Unacknowledged alert exceeded configured response interval'}
+            detection.severity = 'high'
+            audit(db, 'system', 'automatic_alert_escalation', detection.id, {'age_seconds': age})
 
 
 def request(e):
@@ -39,6 +52,13 @@ def detect(db, event):
     for rule in db.scalars(select(Rule)):
         cfg = rule.config
         if not cfg['enabled'] or event.service in cfg.get('suppressed_services', []):
+            continue
+        # Avoid window scans for irrelevant signal types.
+        if rule.id in ('login_failures', 'password_spray') and event.kind != 'auth':
+            continue
+        if rule.id in ('privileged_access', 'error_spike', 'request_frequency') and not request(event):
+            continue
+        if rule.id == 'unexpected_dependency' and not event.trace_id:
             continue
         seconds = cfg['window_seconds']
         start = event.timestamp - timedelta(seconds=seconds)
@@ -96,9 +116,9 @@ def detect(db, event):
 
 def correlate(db, detection, event):
     # Shared trace, explicit request ID, or account: never proximity or service alone.
-    identity = ('trace:' + event.trace_id if event.trace_id else
-                'request:' + event.content['request_id'] if event.content.get('request_id') else
-                'account:' + event.account if event.account else 'detection:' + detection.id)
+    candidates = {'trace': event.trace_id, 'request': event.content.get('request_id'), 'account': event.account}
+    fields = os.getenv('CORRELATION_KEYS', 'trace,request,account').split(',')
+    identity = next((field + ':' + candidates[field] for field in fields if candidates.get(field)), 'detection:' + detection.id)
     key = event.origin + ':' + identity
     window = int(os.getenv('CORRELATION_WINDOW_SECONDS', '300'))
     incident = db.scalar(select(Incident).where(Incident.correlation_key == key, Incident.end >= event.timestamp - timedelta(seconds=window), Incident.start <= event.timestamp + timedelta(seconds=window)).order_by(Incident.end.desc()))
@@ -126,3 +146,5 @@ def enrich_incidents(db, event):
     for incident in db.scalars(select(Incident).where(Incident.correlation_key == event.origin + ':trace:' + event.trace_id, Incident.end >= event.timestamp - window, Incident.start <= event.timestamp + window)):
         if not db.get(IncidentEvent, (incident.id, event.id)):
             db.add(IncidentEvent(incident_id=incident.id, event_id=event.id))
+            incident.start = min(incident.start.replace(tzinfo=None), event.timestamp.replace(tzinfo=None))
+            incident.end = max(incident.end.replace(tzinfo=None), event.timestamp.replace(tzinfo=None))

@@ -200,7 +200,7 @@ def overview(minutes: int = Query(60, ge=1, le=43200), service: str | None = Non
             pipeline = {'queue': client.xlen('traceforge:ingest'), 'dead_letters': client.xlen('traceforge:dead'), 'ingestion_worker': bool(client.get('traceforge:heartbeat:ingestion')), 'correlation_worker': bool(client.get('traceforge:heartbeat:correlation'))}
         except Exception:
             pipeline = {'available': False}
-        return {'events': len(rows), 'services': len({e.service for e in rows}), 'alerts': len(alerts), 'auth_failures': sum(e.kind == 'auth' and e.content['attributes'].get('outcome') == 'failure' for e in rows),
+        return {'events': len(rows), 'total_events': db.scalar(select(func.count()).select_from(Event)), 'services': len({e.service for e in rows}), 'alerts': len(alerts), 'auth_failures': sum(e.kind == 'auth' and e.content['attributes'].get('outcome') == 'failure' for e in rows),
                 'error_rate': sum(e.content['attributes']['status'] >= 500 for e in requests) / len(requests) if requests else None,
                 'latency_ms': sum(latency) / len(latency) if latency else None, 'pending': pending, 'lag_seconds': (now() - oldest.replace(tzinfo=timezone.utc)).total_seconds() if oldest else 0,
                 'trend': [{'time': k, 'events': v} for k, v in sorted(trend.items())], 'pipeline': pipeline, 'sample_limit': 10000, 'truncated': len(rows) == 10000, 'anomalies': statistics(rows)}
@@ -260,6 +260,7 @@ class RuleUpdate(BaseModel):
     window_seconds: int = Field(ge=1, le=3600)
     suppressed_services: list[str] = Field(default_factory=list, max_length=100)
     allowed_edges: list[list[str]] | None = None
+    escalation_after_seconds: int = Field(900, ge=60, le=604800)
 
 
 @app.patch('/api/rules/{rid}')
