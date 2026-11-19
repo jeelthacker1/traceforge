@@ -1,0 +1,127 @@
+name: traceforge
+x-backend: &backend
+  build: ./backend
+  environment: &env
+    DATABASE_URL: postgresql+psycopg://traceforge:${POSTGRES_PASSWORD:?Run scripts/configure.ps1 first}@postgres:5432/traceforge
+    REDIS_URL: redis://redis:6379/0
+    ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Run scripts/configure.ps1 first}
+    INGEST_KEY: ${INGEST_KEY:?Run scripts/configure.ps1 first}
+    CHECKPOINT_SIGNING_KEY: ${CHECKPOINT_SIGNING_KEY:-}
+    ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+    COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    RETENTION_DAYS: ${RETENTION_DAYS:-30}
+  restart: unless-stopped
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+    migrate: {condition: service_completed_successfully}
+x-demo: &demo
+  build: ./backend
+  command: [uvicorn, 'demo:app', --host, 0.0.0.0, --port, '8000']
+  restart: unless-stopped
+  depends_on:
+    otel-collector: {condition: service_started}
+  healthcheck:
+    test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+    interval: 15s
+    timeout: 5s
+    retries: 5
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: traceforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure .env}
+      POSTGRES_DB: traceforge
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U traceforge']
+      interval: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    command: [redis-server, --appendonly, 'yes', --maxmemory, 256mb, --maxmemory-policy, noeviction]
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      retries: 10
+  migrate:
+    build: ./backend
+    environment: *env
+    command: [alembic, upgrade, head]
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    <<: *backend
+    ports: ['127.0.0.1:8000:8000']
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  ingestion-worker:
+    <<: *backend
+    command: [python, -m, app.pipeline, ingestion]
+    healthcheck:
+      test: [CMD, python, -c, "from app.pipeline import redis_client; assert redis_client().get('traceforge:heartbeat:ingestion')"]
+      interval: 15s
+      retries: 5
+  correlation-worker:
+    <<: *backend
+    command: [python, -m, app.pipeline, correlation]
+    healthcheck:
+      test: [CMD, python, -c, "from app.pipeline import redis_client; assert redis_client().get('traceforge:heartbeat:correlation')"]
+      interval: 15s
+      retries: 5
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.123.0
+    user: '0:0'
+    command: [--config=/etc/otelcol/config.yaml]
+    environment:
+      INGEST_KEY: ${INGEST_KEY:?Configure .env}
+    volumes:
+      - ./infra/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+      - collector-data:/var/lib/otelcol
+    depends_on:
+      api: {condition: service_healthy}
+  demo-api-gateway:
+    <<: *demo
+    environment: {SERVICE_NAME: gateway, OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'}
+  demo-auth:
+    <<: *demo
+    environment: {SERVICE_NAME: auth, OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'}
+  demo-orders:
+    <<: *demo
+    environment: {SERVICE_NAME: orders, OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'}
+  demo-inventory:
+    <<: *demo
+    environment: {SERVICE_NAME: inventory, OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'}
+  demo-payments:
+    <<: *demo
+    environment: {SERVICE_NAME: payments, OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'}
+  workload:
+    <<: *demo
+    profiles: [tools]
+    command: [python, workload.py]
+    restart: 'no'
+    healthcheck: {disable: true}
+    depends_on:
+      demo-api-gateway: {condition: service_healthy}
+      demo-auth: {condition: service_healthy}
+      demo-orders: {condition: service_healthy}
+      demo-inventory: {condition: service_healthy}
+      demo-payments: {condition: service_healthy}
+  web:
+    build: ./web
+    ports: ['127.0.0.1:3000:3000']
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:3000').then(r=>{if(!r.ok)process.exit(1)})"]
+      interval: 15s
+      retries: 5
+volumes:
+  postgres-data:
+  redis-data:
+  collector-data:
